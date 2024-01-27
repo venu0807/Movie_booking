@@ -1,4 +1,3 @@
-# Movie Booking Application
 
 # entertainment --- Frontend (react)
 
