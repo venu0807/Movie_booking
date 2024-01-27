@@ -1,11 +1,17 @@
-
-Certainly! Below is a simple template for a README file for a movie booking application. Feel free to customize it according to the specific details and features of your movie booking project.
-
 Movie Booking Application
+
+entertainment --- Frontend (react)
+env -- Backend (django rest )
+
+
 Overview
+
+
 This is a Movie Booking Application that allows users to browse movies, view showtimes, and book tickets for their favorite films. The application aims to provide a convenient and user-friendly platform for movie enthusiasts to plan and book their cinema experiences.
 
 Features
+
+
 Browse Movies:
 
 View a list of available movies with details such as title, genre, and release date.
