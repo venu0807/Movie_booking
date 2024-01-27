@@ -1,18 +1,20 @@
-Movie Booking Application
+# Movie Booking Application
 
-entertainment --- Frontend (react)
-env -- Backend (django rest )
+# entertainment --- Frontend (react)
 
 
-Overview
+# env -- Backend (django rest )
+
+
+# Overview
 
 
 This is a Movie Booking Application that allows users to browse movies, view showtimes, and book tickets for their favorite films. The application aims to provide a convenient and user-friendly platform for movie enthusiasts to plan and book their cinema experiences.
 
-Features
+# Features
 
 
-Browse Movies:
+# Browse Movies:
 
 View a list of available movies with details such as title, genre, and release date.
 Click on a movie to see additional information, including a brief synopsis and cast details.
@@ -53,11 +55,6 @@ Copy code
 npm start
 The application should now be accessible at http://localhost:3000.
 
-Contributing
-We welcome contributions! If you'd like to contribute to the project, please follow our Contribution Guidelines.
-
-License
-This project is licensed under the MIT License.
 
 Contact
-For any inquiries or support, please contact us at your-email@example.com.
+For any inquiries or support, please contact us at pvgreddy3@gmail.com.
