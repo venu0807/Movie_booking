@@ -36,7 +36,7 @@ Clone the repository:
 
 bash
 Copy code
-git clone https://github.com/your-username/movie-booking-app.git
+git clone https://github.com/venu0807/movie-booking-app.git
 Navigate to the project directory:
 
 bash
