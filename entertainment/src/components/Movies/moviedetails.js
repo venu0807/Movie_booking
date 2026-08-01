@@ -95,7 +95,7 @@ export default function MovieDetails(){
                    </ul>
                   </div>
                   <div style={{ borderRadius: '10px',width:'200%' }}>
-                  {apiReleaseDate <= currentDate | new Date(apiReleaseDate.getTime() - currentDate <= 2 * 24 * 60 * 60 * 1000)  ? (
+                  {apiReleaseDate <= currentDate || new Date(apiReleaseDate.getTime() - currentDate.getTime() <= 2 * 24 * 60 * 60 * 1000)  ? (
                   <button className="btn btn-lg px-5 ml-5 bg-danger text-light" onClick={handleBookTicketsClick}> Book tickets</button>) : (<p></p> )}
                   </div>
                 </div>

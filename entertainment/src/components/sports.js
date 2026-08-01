@@ -6,7 +6,7 @@ const Sports = () => {
 
   useEffect(() => {
     const intervalId = setInterval(() => {
-      // setCurrentDateTime(new Date());
+      setCurrentDateTime(new Date());
     }, 1000); // Update every second
 
     return () => clearInterval(intervalId); // Cleanup on component unmount

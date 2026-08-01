@@ -85,8 +85,8 @@ export default function Cast(){
                   <div>
                     <h2>About</h2>
                     <p>
-                      {isExpanded ? per.about : `${per.about.substring(0, 500)}...`}
-                      {per.about.length > 500 && (
+                      {isExpanded ? per.about : per.about ? `${per.about.substring(0, 500)}...` : ''}
+                      {per.about && per.about.length > 500 && (
                         <span onClick={toggleExpand} style={{ color: 'blue', cursor: 'pointer' }}>
                           {isExpanded ? ' Read Less' : ' Read More'}
                         </span>

@@ -93,8 +93,8 @@ export default function Crew(){
                         <div>
                            <h2>About</h2>
                            <p>
-                           {isExpanded ? per.about : `${per.about.substring(0, 500)}...`}
-                    {per.about.length > 100 && (
+                           {isExpanded ? per.about : per.about ? `${per.about.substring(0, 500)}...` : ''}
+                    {per.about && per.about.length > 100 && (
                       <span onClick={toggleExpand} style={{ color: 'blue', cursor: 'pointer' }}>
                         {isExpanded ? ' Read Less' : ' Read More'}
                       </span>

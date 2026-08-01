@@ -1,28 +1,29 @@
 import React, { createContext, useState, useEffect} from "react";
 import { jwtDecode } from "jwt-decode";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 // import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 // import { faStar } from '@fortawesome/free-solid-svg-icons';
 
+// ── API configuration ──
+const API_BASE_URL = "http://127.0.0.1:8000";
+
+// ── Token helpers ──
+// ponytail: localStorage is XSS-vulnerable. For production, swap these to
+// use httpOnly cookies (requires backend changes to set
+// JWT as httpOnly cookie rather than returning in JSON body).
+const TOKEN_KEY = 'authTokens';
+const getToken = () => { try { const raw = localStorage.getItem(TOKEN_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; } };
+const setToken = (tokens) => localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
+const removeToken = () => localStorage.removeItem(TOKEN_KEY);
 
 const UserContext = createContext();
- 
 
+// ── Context provider ──
 const UserProvider = ({ children }) => {
 
-    const { id } = useParams();
+    // ── Auth state (from localStorage) ──
+    const [authTokens, setAuthTokens] = useState(() => getToken());
 
-
-    const [authTokens, setAuthTokens] = useState(() => {
-        try {
-          const storedTokens = localStorage.getItem('authTokens');
-          return storedTokens ? JSON.parse(storedTokens) : null;
-        } catch (error) {
-          console.error('Error decoding stored tokens:', error);
-          return null;
-        }
-      });
-      
       const [user, setUser] = useState(() => {
         try {
           return authTokens ? jwtDecode(authTokens.access) : null;
@@ -32,10 +33,7 @@ const UserProvider = ({ children }) => {
         }
       });
 
-
-
-    // const [authTokens, setAuthTokens] = useState( () => localStorage.getItem('authTokens') ? JSON.parse(localStorage.getItem('authTokens')) : null)
-    // const [user, setUser] = useState( () => localStorage.getItem('authTokens') ? jwtDecode(localStorage.getItem('authTokens')) : null);
+    // ── App state ──
     const [loading, setLoading] = useState(true)
     const [city,setCity] = useState('');
     const [rating,setRating] = useState('');
@@ -46,10 +44,11 @@ const UserProvider = ({ children }) => {
     const [theatershowdata,setTheaterShowdata] = useState([]);
     const [seatbookingdata,setSeatBookingdata] = useState([]);
     const [eventdata,setEventdata] = useState([]);
-    
+
 
     const navigate = useNavigate()
 
+    // ── Auth: register ──
     const registerUser = async (e) => {
         e.preventDefault();
         console.log("Form Event:", e);
@@ -57,19 +56,19 @@ const UserProvider = ({ children }) => {
         const username = e.target.username.value;
         const password = e.target.password.value;
         const confirmPassword = e.target.confirmPassword.value;
-    
+
         if (!username || !password || password !== confirmPassword) {
             console.error("Ivalid Data");
             return;
         }
-    
+
         try {
-            const registerResponse = await fetch("http://127.0.0.1:8000/api/register/", {
+            const registerResponse = await fetch(`${API_BASE_URL}/api/register/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ "username": username , "password": password })
             });
-    
+
             if (registerResponse.ok) {
                 const data = await registerResponse.json();
                 navigate('/mrating')
@@ -83,64 +82,64 @@ const UserProvider = ({ children }) => {
 
     }
 
- 
+    // ── Auth: login ──
     const loginUser = async (e) => {
         e.preventDefault();
-        const response = await fetch("http://127.0.0.1:8000/api/token/", {
+        const response = await fetch(`${API_BASE_URL}/api/token/`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ "username": e.target.username.value, "password": e.target.password.value })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.status === 200) {
             setAuthTokens(data);
             setUser(jwtDecode(data.access));
-            localStorage.setItem('authTokens', JSON.stringify(data))
+            setToken(data);
             navigate('/mrating')
         } else {
             alert('Something went wrong!');
         }
     };
 
-
+    // ── Auth: logout ──
     const  logoutUser = () => {
         setAuthTokens(null);
         setUser(null);
-        localStorage.removeItem('authTokens')
+        removeToken()
         // navigate(window.location.pathname)
         navigate('/')
     }
-    
 
+    // ── Auth: refresh token ──
     const updateToken = async () => {
         console.log('Update Token Called!')
-        const response = await fetch("http://127.0.0.1:8000/api/token/refresh/", {
+        const response = await fetch(`${API_BASE_URL}/api/token/refresh/`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ "refresh":authTokens?.refresh })
         });
-        
+
         const data = await response.json();
 
         if (response.status === 200) {
             setAuthTokens(data);
             setUser(jwtDecode(data.access));
-            localStorage.setItem('authTokens', JSON.stringify(data))
+            setToken(data);
         } else {
             logoutUser()
-        } 
+        }
 
         if (loading) {
             setLoading(false)
         }
     }
 
-
+    // ── Data: fetch movies, theater shows, seat bookings ──
     const fetchData = async () => {
 
-        const movieResponse = await fetch("http://127.0.0.1:8000/api/movie/")
+        const movieResponse = await fetch(`${API_BASE_URL}/api/movie/`)
         // , {
         //     headers:{'Content-Type':'application/json','Authorization':'Bearer ' + String(authTokens?.access) }
         // })
@@ -154,7 +153,7 @@ const UserProvider = ({ children }) => {
             logoutUser()
         }
 
-        const theatershowResponse = await fetch("http://127.0.0.1:8000/api/theatershow/");
+        const theatershowResponse = await fetch(`${API_BASE_URL}/api/theatershow/`);
           const theatershow = await theatershowResponse.json();
 
         //   console.log('Theater Data:', theatershow);
@@ -165,7 +164,7 @@ const UserProvider = ({ children }) => {
             logoutUser();
           }
 
-          const seatbookingResponse = await fetch("http://127.0.0.1:8000/api/seatbooking/");
+          const seatbookingResponse = await fetch(`${API_BASE_URL}/api/seatbooking/`);
           const seatbooking = await seatbookingResponse.json();
 
         //   console.log('Show Data:', seatbooking);
@@ -175,72 +174,63 @@ const UserProvider = ({ children }) => {
           } else if (seatbookingResponse.statusText === 'Unauthorized') {
             logoutUser();
           }
-        
+
     };
 
-
-
-
+    // ── Data: fetch movie details, cast, crew by movie id ──
     const fetchMovieDetails = async (id) => {
         try {
-        
-          const movieResponse = await fetch(`http://127.0.0.1:8000/api/movie/${id}/`);
+
+          const movieResponse = await fetch(`${API_BASE_URL}/api/movie/${id}/`);
           const movie = await movieResponse.json();
           console.log('movieid :' , movie.id)
           console.log('movie :' , movie)
-      
+
           setMoviedatabyid(movie);
 
-
-
-          const castResponse = await fetch(`http://127.0.0.1:8000/api/cast/`);
+          const castResponse = await fetch(`${API_BASE_URL}/api/cast/`);
           const cast = await castResponse.json();
 
           console.log('castdata',cast );
           console.log('movieId:',movie.id)
 
-      
+
           const filteredCast = cast.filter(actor => actor.movies_cast.includes(movie.id));
           console.log('filtercast', filteredCast);
-         
-      
+
+
           if (castResponse.status === 200){
               setCastdata(filteredCast)
           } else if (castResponse.statusText === 'Unauthorized'){
               logoutUser()
           }
-  
-          const crewResponse = await fetch(`http://127.0.0.1:8000/api/crew/`);
+
+          const crewResponse = await fetch(`${API_BASE_URL}/api/crew/`);
           const crew = await crewResponse.json();
-      
+
           const filteredCrew = crew.filter(actor => actor.movies_crew.includes(movie.id));
-      
+
           console.log('filterCrew', filteredCrew);
-  
+
           if (crewResponse.status === 200){
               setCrewdata(filteredCrew)
           } else if (crewResponse.statusText === 'Unauthorized'){
               logoutUser()
           }
-          
-          
-          
+
+
+
 
         } catch (error) {
           console.error('Error fetching movie details:', error);
         }
       };
 
-
-    
-
-
-
-
+    // ── Context value ──
     const contextValue = {
         registerUser:registerUser,
         user:user,
-        loginUser:loginUser, 
+        loginUser:loginUser,
         logoutUser:logoutUser,
         city,
         rating,
@@ -255,19 +245,12 @@ const UserProvider = ({ children }) => {
         fetchMovieDetails,
     };
 
-
-    useEffect(() => {
-        fetchMovieDetails(id);
-      }, [id]);
-    
-
-
+    // ── Effects: token refresh + initial data load ──
     useEffect( () => {
 
         if (loading){
             updateToken()
         }
-
 
         const fourMinutes = 1000 * 60 * 4
         const intervel = setInterval(() =>{
@@ -278,10 +261,10 @@ const UserProvider = ({ children }) => {
         fetchData();
         return () => clearInterval(intervel)
 
-      
+
     },[authTokens, loading]);
 
-
+    // ── Render ──
     return(
         <UserContext.Provider value={contextValue}>
             {loading ? null : children}

@@ -1,0 +1,16 @@
+node_modules/
+.env*
+__pycache__/
+*.pyc
+*.sqlite3
+db.sqlite3
+*.log
+dist/
+build/
+.DS_Store
+*.local
+env/
+venv/
+.venv/
+*.pyc
+Ent_Web.bat

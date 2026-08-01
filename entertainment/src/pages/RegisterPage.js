@@ -5,7 +5,7 @@ export default function Register(){
 
   const { registerUser } =useContext(UserContext);
 
-  const [conformpassword, setConformPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
 
@@ -33,17 +33,17 @@ export default function Register(){
                         <input type="email" className="form-control"   value={email} onChange={(e) => setEmail(e.target.value)}/>
                     </div> */}
                     <div className="form-group col-md-6">
-                        <label for="inputEmail4">Username</label>
+                        <label htmlFor="inputEmail4">Username</label>
                         <input type="text" className="form-control"  name="username"/>
                     </div>
                 </div>
                 <div className="form-row">
                     <div className="form-group col-md-6">
-                      <label for="inputPassword4">Password</label>
+                      <label htmlFor="inputPassword4">Password</label>
                       <input type="password" className="form-control"  name="password" />
                     </div>
                     <div className="form-group col-md-6">
-                      <label for="inputPassword4"> Conform Password</label>
+                      <label htmlFor="inputPassword4"> Confirm Password</label>
                       <input type="password" className="form-control" name="confirmPassword" />
                     </div>
                   </div >
