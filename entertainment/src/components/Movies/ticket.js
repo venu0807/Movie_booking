@@ -20,34 +20,23 @@ const Payment = () => {
     errorMessage: "",
   });
 
-
   const formattedSeats = selectedSeats.split(',').map(seat => seat.trim()).filter(seat => seat.length > 0);
+  const totalAmount = amount * formattedSeats.length * 1.18;
 
   useEffect(() => {
     fetchMovieDetails(id);
-    console.log('type :',type)
-    console.log('amount :',amount)
-    console.log('date :',showDate)
-    console.log('time :',showTime)
-    console.log('theater :', theaterName)
   }, [id]);
 
-  const handlePaymentSubmit = async () => {
+  const confirmBooking = async (paymentId) => {
     try {
       const theaterResponse = await fetch(`http://127.0.0.1:8000/api/theatershow/?theaterName=${theaterName}`);
       const theaterData = await theaterResponse.json();
-
       const selectedTheater = theaterData.find(theater => theater.name === theaterName);
 
-
       if (selectedTheater) {
-        const theaterId = selectedTheater.id;
-
         const response = await fetch('http://127.0.0.1:8000/api/seatbooking/', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             seat_number: formattedSeats,
             is_booked: true,
@@ -55,53 +44,73 @@ const Payment = () => {
             show_date: showDate,
             screentype: type,
             show_time: showTime,
-            total_amount: amount * formattedSeats.length * 1.18,
+            total_amount: totalAmount,
             payment_status: 'Confirmed',
+            payment_id: paymentId,
             movie: moviedatabyid.id,
-            theater: theaterId,
+            theater: selectedTheater.id,
           }),
         });
 
         if (response.ok) {
-          setBookingStatus({
-            success: true,
-            error: false,
-            errorMessage: "",
-          });
+          setBookingStatus({ success: true, error: false, errorMessage: "" });
         } else {
           const errorResponse = await response.json();
-
-          if (errorResponse && typeof errorResponse === 'object') {
-            const errorDetails = Object.keys(errorResponse).map((key) => (
-              `${key}: ${errorResponse[key].join(', ')}`
-            ));
-
-            setBookingStatus({
-              success: false,
-              error: true,
-              errorMessage: `Validation errors: ${errorDetails.join(', ')}`,
-            });
-          } else {
-            setBookingStatus({
-              success: false,
-              error: true,
-              errorMessage: errorResponse.detail || "An unexpected error occurred.",
-            });
-          }
+          const errorDetails = errorResponse && typeof errorResponse === 'object'
+            ? Object.keys(errorResponse).map((key) => `${key}: ${errorResponse[key].join(', ')}`).join(', ')
+            : (errorResponse.detail || "An unexpected error occurred.");
+          setBookingStatus({ success: false, error: true, errorMessage: `Validation errors: ${errorDetails}` });
         }
       } else {
         throw new Error(`Theater with name ${theaterName} not found.`);
       }
     } catch (error) {
       console.error('Error during fetch:', error);
-      setBookingStatus({
-        success: false,
-        error: true,
-        errorMessage: "An unexpected error occurred.",
-      });
+      setBookingStatus({ success: false, error: true, errorMessage: "An unexpected error occurred." });
     }
   };
-  
+
+  const handlePaymentSubmit = async () => {
+    if (typeof window.Razorpay === 'undefined') {
+      setBookingStatus({ success: false, error: true, errorMessage: "Razorpay not loaded. Check internet connection." });
+      return;
+    }
+
+    try {
+      const orderRes = await fetch('http://127.0.0.1:8001/api/create-payment-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: totalAmount }),
+      });
+      const orderData = await orderRes.json();
+
+      if (!orderData.orderId) {
+        setBookingStatus({ success: false, error: true, errorMessage: orderData.error || "Failed to create payment order" });
+        return;
+      }
+
+      const options = {
+        key: orderData.key,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        order_id: orderData.orderId,
+        name: 'CineBook',
+        description: `${moviedatabyid.moviename} - ${formattedSeats.join(', ')}`,
+        handler: async (response) => {
+          await confirmBooking(response.razorpay_payment_id);
+        },
+        prefill: { name: '', email: '', contact: '' },
+        theme: { color: '#e50914' },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (error) {
+      console.error('Payment order error:', error);
+      setBookingStatus({ success: false, error: true, errorMessage: "Failed to create payment order." });
+    }
+  };
+
   return (
     <div className='d-flex justify-content-around'>
       <div>
@@ -111,46 +120,33 @@ const Payment = () => {
         <p>Show Date: {showDate}</p>
         <p>Show Time: {showTime}</p>
         <p>Selected Seats: {selectedSeats}</p>
-        <p>Amount : {amount * formattedSeats.length * 1.18}</p>
+        <p>Amount : ₹{totalAmount.toFixed(2)}</p>
       </div>
 
       <div>
         <div>
-          <h3>Enter Payment Details</h3> <hr />
+          <h3>Payment</h3> <hr />
         </div>
-        <table  cellPadding={10}>
-          <tr>
-            <th>Card Number </th>
-            <th><input type='text' ></input></th>
-          </tr>
-          <tr>
-            <th>Cvv </th>
-            <th><input type='text' ></input></th>
-          </tr>
-          <tr>
-            <th>Name on the Card </th>
-            <th><input type='text' ></input></th>
-          </tr>
-        </table>
-        <input className='mt-2' type="submit" onClick={handlePaymentSubmit}></input>
-        
+        <button
+          className="btn btn-danger mt-3"
+          onClick={handlePaymentSubmit}
+        >
+          Pay ₹{totalAmount.toFixed(2)}
+        </button>
+
         {bookingStatus.success && (
-        <div>
-          <h3>Booking Successful!</h3>
+          <div>
+            <h3>Booking Successful!</h3>
           </div>
-          )}
-          {bookingStatus.error && (
+        )}
+        {bookingStatus.error && (
           <div>
             <h3>Error in Booking</h3>
             <p>{bookingStatus.errorMessage}</p>
-            </div>
-            )}
-            
-            {(!bookingStatus.success && !bookingStatus.error) && (
-            <p>Processing payment...</p>
-            )}
           </div>
+        )}
       </div>
+    </div>
   );
 };
 
