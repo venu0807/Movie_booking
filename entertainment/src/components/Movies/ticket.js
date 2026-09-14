@@ -2,6 +2,8 @@ import React, { useState, useContext, useEffect } from 'react';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { UserContext } from '../context';
 
+const PAYMENT_SERVER = process.env.REACT_APP_PAYMENT_API_URL || 'http://127.0.0.1:8001';
+
 const Payment = () => {
   const { moviedatabyid, fetchMovieDetails } = useContext(UserContext);
   const { id } = useParams();
@@ -13,6 +15,9 @@ const Payment = () => {
   const type = searchParams.get('type') || "";
   const amount = searchParams.get('amount') || "";
   const selectedSeats = searchParams.get("selectedSeats") || "";
+  // Server-side show id (the payment server owns pricing). Falls back to a
+  // legacy param mapping for old links.
+  const showId = searchParams.get("showId") || "";
 
   const [bookingStatus, setBookingStatus] = useState({
     success: false,
@@ -21,12 +26,15 @@ const Payment = () => {
   });
 
   const formattedSeats = selectedSeats.split(',').map(seat => seat.trim()).filter(seat => seat.length > 0);
-  const totalAmount = amount * formattedSeats.length * 1.18;
+  const seatType = type === 'premium' ? 'premium' : 'regular';
+  const displayTotal = amount * formattedSeats.length * 1.18;
 
   useEffect(() => {
     fetchMovieDetails(id);
   }, [id]);
 
+  // Records the booking in the Django app AFTER the payment server has verified
+  // the Razorpay checkout signature for this order.
   const confirmBooking = async (paymentId) => {
     try {
       const theaterResponse = await fetch(`http://127.0.0.1:8000/api/theatershow/?theaterName=${theaterName}`);
@@ -44,7 +52,7 @@ const Payment = () => {
             show_date: showDate,
             screentype: type,
             show_time: showTime,
-            total_amount: totalAmount,
+            total_amount: displayTotal,
             payment_status: 'Confirmed',
             payment_id: paymentId,
             movie: moviedatabyid.id,
@@ -75,16 +83,22 @@ const Payment = () => {
       setBookingStatus({ success: false, error: true, errorMessage: "Razorpay not loaded. Check internet connection." });
       return;
     }
+    if (!showId) {
+      setBookingStatus({ success: false, error: true, errorMessage: "Missing showId — this show is not bookable on the new payment server yet." });
+      return;
+    }
 
     try {
-      const orderRes = await fetch('http://127.0.0.1:8001/api/create-payment-order', {
+      // The server computes the amount from its own show catalogue; the client
+      // never sends a price.
+      const orderRes = await fetch(`${PAYMENT_SERVER}/api/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: totalAmount }),
+        body: JSON.stringify({ showId, seats: formattedSeats, seatType }),
       });
       const orderData = await orderRes.json();
 
-      if (!orderData.orderId) {
+      if (!orderRes.ok || !orderData.orderId) {
         setBookingStatus({ success: false, error: true, errorMessage: orderData.error || "Failed to create payment order" });
         return;
       }
@@ -97,7 +111,27 @@ const Payment = () => {
         name: 'CineBook',
         description: `${moviedatabyid.moviename} - ${formattedSeats.join(', ')}`,
         handler: async (response) => {
-          await confirmBooking(response.razorpay_payment_id);
+          // Verify the checkout signature server-side before confirming.
+          try {
+            const verifyRes = await fetch(`${PAYMENT_SERVER}/api/bookings/${orderData.bookingId}/verify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            });
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok) {
+              setBookingStatus({ success: false, error: true, errorMessage: verifyData.error || "Payment verification failed." });
+              return;
+            }
+            await confirmBooking(response.razorpay_payment_id);
+          } catch (err) {
+            console.error('Verification error:', err);
+            setBookingStatus({ success: false, error: true, errorMessage: "Payment verification failed." });
+          }
         },
         prefill: { name: '', email: '', contact: '' },
         theme: { color: '#e50914' },
@@ -120,7 +154,7 @@ const Payment = () => {
         <p>Show Date: {showDate}</p>
         <p>Show Time: {showTime}</p>
         <p>Selected Seats: {selectedSeats}</p>
-        <p>Amount : ₹{totalAmount.toFixed(2)}</p>
+        <p>Amount : ₹{displayTotal.toFixed(2)}</p>
       </div>
 
       <div>
@@ -131,7 +165,7 @@ const Payment = () => {
           className="btn btn-danger mt-3"
           onClick={handlePaymentSubmit}
         >
-          Pay ₹{totalAmount.toFixed(2)}
+          Pay ₹{displayTotal.toFixed(2)}
         </button>
 
         {bookingStatus.success && (

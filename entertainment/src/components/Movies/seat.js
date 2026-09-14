@@ -13,7 +13,8 @@ export default function SeatBooking() {
   const showTime = searchParams.get('showTime') || '';
   const type = searchParams.get('type') || '';
   const amount = searchParams.get('amount') || '';
-  const [selectedSeats, setSelectedSeats] = useState([]);
+  // Server-side show id: the payment server owns pricing for this show.
+  const showId = searchParams.get('showId') || '';
   const [bookedSeats, setBookedSeats] = useState([]);
   
 
@@ -173,7 +174,7 @@ export default function SeatBooking() {
         <p>Selected Seats: {selectedSeats.join(', ') || 'None'}</p>
         <p>Total Seats Selected: {selectedSeats.length}</p>
       </div>
-      <Link to={`/movie/${id}/${moviedatabyid.moviename}/booking/seats/payment?theaterId=${theaterId}&theaterName=${theaterName}&showDate=${showDate}&type=${type}&showTime=${showTime}&amount=${amount}&selectedSeats=${selectedSeats.join(', ')}`}>
+      <Link to={`/movie/${id}/${moviedatabyid.moviename}/booking/seats/payment?theaterId=${theaterId}&theaterName=${theaterName}&showDate=${showDate}&type=${type}&showTime=${showTime}&amount=${amount}&selectedSeats=${selectedSeats.join(', ')}&showId=${showId}`}>
         <button type="submit">Proceed to Payment</button>
       </Link>
 
