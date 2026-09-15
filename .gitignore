@@ -17,3 +17,5 @@ Ent_Web.bat
 
 # Test artifacts
 server/test-cinebook.sqlite3*
+*.sqlite3-shm
+*.sqlite3-wal
