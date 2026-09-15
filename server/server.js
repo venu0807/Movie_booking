@@ -24,6 +24,23 @@ const cors = require("cors");
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
 
+// ── Tiny .env loader (no external deps) ──────────────────────────────────────
+// Loads .env from this directory if present; real environment variables win.
+(function loadEnv() {
+  const envPath = path.join(__dirname, ".env");
+  if (!fs.existsSync(envPath)) return;
+  for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (!m) continue;
+    const key = m[1];
+    let val = m[2].trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    if (!(key in process.env)) process.env[key] = val;
+  }
+})();
+
 const PORT = Number(process.env.PORT) || 8001;
 const HOLD_MINUTES = 10;
 const GST_RATE = 0.18;
@@ -69,7 +86,116 @@ db.exec(`
     PRIMARY KEY (show_id, seat)
   );
   CREATE INDEX IF NOT EXISTS idx_holds_expiry ON seat_holds (hold_until);
+  CREATE TABLE IF NOT EXISTS movies (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    poster_url TEXT,
+    backdrop_url TEXT,
+    genre TEXT,
+    certificate TEXT,
+    rating REAL,
+    runtime INTEGER,
+    languages TEXT,
+    about TEXT,
+    release_date TEXT,
+    city TEXT,
+    cast_json TEXT,
+    crew_json TEXT
+  );
+  CREATE TABLE IF NOT EXISTS shows (
+    id TEXT PRIMARY KEY,
+    movie_id TEXT NOT NULL REFERENCES movies(id),
+    theater TEXT NOT NULL,
+    city TEXT,
+    screen TEXT,
+    show_time TEXT NOT NULL,
+    price_regular INTEGER NOT NULL,
+    price_premium INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS events (
+    id TEXT PRIMARY KEY,
+    eventname TEXT NOT NULL,
+    image_url TEXT,
+    place TEXT,
+    eventtype TEXT,
+    price INTEGER,
+    city TEXT,
+    event_date TEXT
+  );
+  CREATE TABLE IF NOT EXISTS people (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    image_url TEXT,
+    occupation_json TEXT,
+    born TEXT,
+    birthplace TEXT,
+    bio TEXT
+  );
 `);
+// One-time migrations (SQLite has no ADD COLUMN IF NOT EXISTS).
+for (const stmt of [
+  "ALTER TABLE bookings ADD COLUMN user_id INTEGER",
+  "ALTER TABLE movies ADD COLUMN city TEXT",
+  "ALTER TABLE shows ADD COLUMN city TEXT",
+]) {
+  try {
+    db.exec(stmt);
+  } catch (e) {
+    if (!String(e.message).includes("duplicate column")) throw e;
+  }
+}
+
+// ── Show catalogue (DB-backed; falls back to the built-in demo shows) ────────
+// Declared via `var` below; function is only invoked after SHOWS exists.
+var CATALOGUE;
+function loadCatalogue() {
+  const rows = db
+    .prepare(
+      `SELECT s.id, s.theater, s.city, s.screen, s.show_time,
+              s.price_regular, s.price_premium,
+              m.id AS movie_id, m.title, m.poster_url, m.backdrop_url, m.genre,
+              m.certificate, m.rating, m.runtime, m.languages, m.about, m.release_date,
+              m.cast_json, m.crew_json
+       FROM shows s JOIN movies m ON m.id = s.movie_id
+       ORDER BY s.show_time`
+    )
+    .all();
+  if (rows.length > 0) {
+    const byId = {};
+    for (const r of rows) {
+      byId[r.id] = {
+        movie: r.title,
+        movieId: r.movie_id,
+        theater: r.theater,
+        city: r.city || "All",
+        screen: r.screen || "Audi 1",
+        showTime: r.show_time,
+        priceByType: { regular: r.price_regular, premium: r.price_premium },
+        meta: {
+          poster: r.poster_url,
+          backdrop: r.backdrop_url,
+          genre: r.genre,
+          certificate: r.certificate,
+          rating: r.rating,
+          runtime: r.runtime,
+          languages: r.languages,
+          about: r.about,
+          release_date: r.release_date,
+          cast: r.cast_json ? JSON.parse(r.cast_json) : [],
+          crew: r.crew_json ? JSON.parse(r.crew_json) : [],
+        },
+      };
+    }
+    return byId;
+  }
+  return SHOWS; // built-in demo catalogue (kept for tests)
+}
 
 const insertHold = db.prepare(
   "INSERT OR REPLACE INTO seat_holds (order_id, show_id, seat, hold_until) VALUES (?, ?, ?, ?)"
@@ -115,8 +241,11 @@ const SHOWS = {
 };
 
 function getShow(showId) {
-  return SHOWS[showId] || null;
+  return CATALOGUE[showId] || SHOWS[showId] || null;
 }
+
+// Live catalogue: DB-seeded movies when present, else the demo shows above.
+CATALOGUE = loadCatalogue();
 
 function validSeatLabel(seat) {
   return typeof seat === "string" && /^[A-Z][1-9][0-9]?$/.test(seat);
@@ -141,19 +270,83 @@ app.use(
 const asyncH = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 // ── Routes ───────────────────────────────────────────────────────────────────
-app.get("/health", (req, res) => res.json({ status: "ok" }));
-
-app.get("/api/shows", (req, res) => {
+app.get("/health", (req, res) => res.json({ status: "ok" }));app.get("/api/shows", (req, res) => {
   res.json(
-    Object.entries(SHOWS).map(([id, s]) => ({
+    Object.entries(CATALOGUE).map(([id, s]) => ({
       id,
       movie: s.movie,
+      movieId: s.movieId || s.movie,
       theater: s.theater,
+      city: s.city || "All",
       screen: s.screen,
       showTime: s.showTime,
       prices: s.priceByType,
+      poster: s.meta ? s.meta.poster : undefined,
+      genre: s.meta ? s.meta.genre : undefined,
+      certificate: s.meta ? s.meta.certificate : undefined,
+      rating: s.meta ? s.meta.rating : undefined,
+      release_date: s.meta ? s.meta.release_date : undefined,
     }))
   );
+});
+
+/**
+ * GET /api/movies — unique movie list with full metadata (poster, cast, crew,
+ * genres). Theatrical detail is aggregated from the shows table.
+ */
+app.get("/api/movies", (req, res) => {
+  const movies = {};
+  for (const s of Object.values(CATALOGUE)) {
+    const id = s.movieId || s.movie;
+    if (!movies[id]) {
+      movies[id] = {
+        id,
+        moviename: s.movie,
+        screentype: "2D",
+        image: s.meta ? s.meta.poster : "",
+        background: s.meta ? s.meta.backdrop : "",
+        starring: s.theater,
+        genre: s.meta ? s.meta.genre : "",
+        certificate: s.meta ? s.meta.certificate : "",
+        rating: s.meta ? s.meta.rating : null,
+        runtime: s.meta ? s.meta.runtime : null,
+        languages: s.meta ? s.meta.languages : "",
+        about: s.meta ? s.meta.about : "",
+        release_date: s.meta ? s.meta.release_date : "",
+        cast: s.meta ? s.meta.cast : [],
+        crew: s.meta ? s.meta.crew : [],
+      };
+    } else {
+      const m = movies[id];
+      if (!m.starring.includes(s.theater)) m.starring += ", " + s.theater;
+      m.about = s.meta && s.meta.about ? s.meta.about : m.about;
+    }
+  }
+  res.json(Object.values(movies));
+});
+
+/**
+ * GET /api/shows/:id/booked
+ * Seat labels already taken for a show — consumed by the frontend seat grid.
+ * A seat is taken if it has an active hold (pending booking) or belongs to a
+ * payment_authorized / payment_settled booking.
+ */
+app.get("/api/shows/:id/booked", (req, res) => {
+  const showId = req.params.id;
+  if (!getShow(showId)) return res.status(404).json({ error: "Unknown showId" });
+  const now = Date.now();
+  const held = db
+    .prepare("SELECT DISTINCT seat FROM seat_holds WHERE show_id = ? AND hold_until > ?")
+    .all(showId, now)
+    .map((r) => r.seat);
+  const sold = db
+    .prepare(
+      "SELECT seats FROM bookings WHERE show_id = ? AND status IN ('payment_authorized','payment_settled')"
+    )
+    .all(showId)
+    .flatMap((r) => String(r.seats).split(","))
+    .filter(Boolean);
+  res.json({ showId, seats: [...new Set([...held, ...sold])].sort() });
 });
 
 /**
@@ -219,10 +412,10 @@ app.post(
 
       const info = db
         .prepare(
-          `INSERT INTO bookings (order_id, show_id, seats, seat_count, base_amount, total_amount, status)
-           VALUES (?, ?, ?, ?, ?, ?, 'pending')`
+          `INSERT INTO bookings (order_id, show_id, seats, seat_count, base_amount, total_amount, status, user_id)
+           VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`
         )
-        .run(order.id, showId, seats.join(","), seats.length, total, totalWithGst);
+        .run(order.id, showId, seats.join(","), seats.length, total, totalWithGst, req.user?.id ?? null);
 
       return res.status(201).json({
         bookingId: info.lastInsertRowid,
@@ -339,6 +532,134 @@ app.get("/api/bookings/:id", (req, res) => {
   const booking = bookingByIdStmt.get(req.params.id);
   if (!booking) return res.status(404).json({ error: "Booking not found" });
   res.json(booking);
+});
+
+// ── Auth (scrypt password hashing; zero extra deps) ───────────────────────────
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(String(password), salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+function verifyPassword(password, stored) {
+  const [salt, hash] = String(stored).split(":");
+  if (!salt || !hash) return false;
+  const candidate = crypto.scryptSync(String(password), salt, 64);
+  const expected = Buffer.from(hash, "hex");
+  return (
+    candidate.length === expected.length &&
+    crypto.timingSafeEqual(candidate, expected)
+  );
+}
+function issueToken(user) {
+  // Signed, expiring token: base64(payload).hmac — verified by requireAuth.
+  const payload = Buffer.from(
+    JSON.stringify({ id: user.id, username: user.username, exp: Date.now() + 7 * 24 * 3600 * 1000 })
+  ).toString("base64url");
+  const sig = crypto
+    .createHmac("sha256", process.env.RAZORPAY_SECRET)
+    .update(payload)
+    .digest("base64url");
+  return `${payload}.${sig}`;
+}
+function parseUser(req) {
+  const h = req.get("authorization") || "";
+  const token = h.startsWith("Bearer ") ? h.slice(7) : null;
+  if (!token) return null;
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return null;
+  const expected = crypto
+    .createHmac("sha256", process.env.RAZORPAY_SECRET)
+    .update(payload)
+    .digest("base64url");
+  if (expected.length !== sig.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (!data.exp || data.exp < Date.now()) return null;
+    return { id: data.id, username: data.username };
+  } catch {
+    return null;
+  }
+}
+function requireAuth(req, res, next) {
+  const user = parseUser(req);
+  if (!user) return res.status(401).json({ error: "Login required" });
+  req.user = user;
+  next();
+}
+
+app.post("/api/auth/register", (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: "username and password required" });
+  if (String(password).length < 4) return res.status(400).json({ error: "password too short (min 4)" });
+  try {
+    const info = db
+      .prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)")
+      .run(String(username).trim(), hashPassword(password));
+    const user = { id: Number(info.lastInsertRowid), username: String(username).trim() };
+    res.status(201).json({ user, token: issueToken(user) });
+  } catch (e) {
+    if (String(e.message).includes("UNIQUE")) return res.status(409).json({ error: "username already taken" });
+    throw e;
+  }
+});
+
+app.post("/api/auth/login", (req, res) => {
+  const { username, password } = req.body || {};
+  const row = db.prepare("SELECT * FROM users WHERE username = ?").get(String(username || "").trim());
+  if (!row || !verifyPassword(password || "", row.password_hash)) {
+    return res.status(401).json({ error: "Invalid username or password" });
+  }
+  const user = { id: row.id, username: row.username };
+  res.json({ user, token: issueToken(user) });
+});
+
+app.get("/api/auth/me", requireAuth, (req, res) => {
+  res.json({ user: req.user });
+});
+
+// ── Booking history (scoped to the logged-in user) ────────────────────────────
+app.get("/api/my/bookings", requireAuth, (req, res) => {
+  const rows = db
+    .prepare("SELECT * FROM bookings WHERE user_id = ? ORDER BY id DESC")
+    .all(req.user.id);
+  res.json(
+    rows.map((b) => ({
+      bookingId: b.id,
+      orderId: b.order_id,
+      showId: b.show_id,
+      seats: String(b.seats).split(","),
+      seatCount: b.seat_count,
+      amount: b.total_amount,
+      amountDisplay: `₹${(b.total_amount / 100).toFixed(2)}`,
+      status: b.status,
+      paymentSettled: !!b.webhook_verified,
+      bookedAt: b.created_at,
+    }))
+  );
+});
+
+// ── Events ────────────────────────────────────────────────────────────────────
+app.get("/api/events", (req, res) => {
+  const city = (req.query.city || "").trim();
+  const rows = city
+    ? db.prepare("SELECT * FROM events WHERE city = ? OR city IS NULL ORDER BY event_date").all(city)
+    : db.prepare("SELECT * FROM events ORDER BY event_date").all();
+  res.json(rows);
+});
+
+// ── People (cast & crew lookup used by /person and /persen pages) ─────────────
+app.get("/api/people/:id", (req, res) => {
+  const row = db.prepare("SELECT * FROM people WHERE id = ?").get(String(req.params.id));
+  if (!row) return res.status(404).json({ error: "Person not found" });
+  res.json({
+    id: row.id,
+    name: row.name,
+    image: row.image_url,
+    occupation: row.occupation_json ? JSON.parse(row.occupation_json) : [],
+    born: row.born,
+    birthplace: row.birthplace,
+    about: row.bio,
+  });
 });
 
 // 404 + error handler

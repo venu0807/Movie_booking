@@ -78,7 +78,10 @@ export default function Booking() {
           moment(date, 'YYYY-MM-DD').format('YYYY-MM-DD')
         );
 
-        return momentShowDates.includes(currentDate) && theater.movie === moviedatabyid.id && theater.location === city && theater.screentype === type;
+        // Theater entries from the payment server carry no fixed city
+        // (location 'All'), so match them regardless of the selected city.
+        const locationMatches = theater.location === city || !theater.location || theater.location === 'All';
+        return momentShowDates.includes(currentDate) && theater.movie === moviedatabyid.id && locationMatches && theater.screentype === type;
       });
 
       setFilteredTheaters(filtered);
@@ -135,7 +138,7 @@ export default function Booking() {
                           return isBefore;
                         }).map((showTime, showIndex) => (
                         <React.Fragment key={`${dateIndex}-${showIndex}`}>
-                          <Link key={`${dateIndex}-${showIndex}`} to={`/movie/${id}/${moviedatabyid.moviename}/booking/seats?theaterId=${theater.id}&theaterName=${theater.name}&showDate=${date}&type=${type}&showTime=${showTime}&amount=${amount}`}>
+                          <Link key={`${dateIndex}-${showIndex}`} to={`/movie/${id}/${moviedatabyid.moviename}/booking/seats?theaterId=${theater.id}&theaterName=${theater.name}&showDate=${date}&type=${type}&showTime=${showTime}&amount=${amount}&showId=${theater.showId || theater.id || ''}`}>
                             <button className={`text-success mx-2`} key={`${dateIndex}-${showIndex}`}>
                               {showTime} - ₹{amount}
                             </button>

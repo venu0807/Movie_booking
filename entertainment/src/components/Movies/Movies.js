@@ -6,10 +6,12 @@ export default function Movies() {
   const { city, moviedata } = useContext(UserContext);
   const currentDate = new Date();
 
+  // Filter options derived from the live catalogue so they always match it.
+  const allLanguages = [...new Set(moviedata.map((m) => m.languages).filter(Boolean))].sort();
+  const allGenres = [...new Set(moviedata.flatMap((m) => (m.genre || '').split(', ').filter(Boolean)))].sort();
   const categories = [
-    { title: "Languages", options: ["English", "Hindi", "Kannada", "Telugu", "Tamil", "Malayalam", "English 7D", "Japanese", "Marathi", "Multi Language"] },
-    // { title: "Genres", options: ["Drama", "Action", "Thriller", "Comedy", "Romantic", "Adventure", "Crime", "Fantasy", "Horror", "Biography", "Musical", "Period", "Superhero", "Animation", "Anime", "Classic", "Family", "Sci-Fi", "Suspense"] },
-    // { title: "Formats", options: ["2D", "4DX", "IMAX2D", "3D", "4DX 3D", "7D", "MX4D", "SCREEN X"] }  
+    ...(allLanguages.length ? [{ title: "Languages", options: allLanguages }] : []),
+    ...(allGenres.length ? [{ title: "Genres", options: allGenres }] : []),
   ];
 
   const [selectedOptions, setSelectedOptions] = useState({});
@@ -20,32 +22,23 @@ export default function Movies() {
       return moviedata
         .filter((movie) => {
           const match = Object.keys(selectedOptions).every((category) => {
-            const categoryKey = category.toLowerCase();
-            const movieCategoryValue = movie[categoryKey];
-    
-            if (movieCategoryValue) {
-              const categoryOptions = selectedOptions[category]?.map(option => option.toLowerCase());
-    
-              const isMatch = categoryOptions.every((selectedOption) =>
-                movieCategoryValue.toLowerCase().includes(selectedOption)
-              );
-    
-              console.log(`${category}: ${movieCategoryValue} => ${isMatch ? 'Match' : 'No Match'}`);
-              return isMatch;
-            }
-    
-            return true;
+            const selected = (selectedOptions[category] || []).map((o) => o.toLowerCase());
+            if (selected.length === 0) return true;
+            const fieldValue =
+              category === "Genres"
+                ? movie.genre || ""
+                : category === "Languages"
+                ? movie.languages || ""
+                : movie[category.toLowerCase()] || "";
+            if (!fieldValue) return false;
+            return selected.some((s) => fieldValue.toLowerCase().includes(s));
           });
-    
           return match;
         })
         .sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
     };
-    
 
-    const result = filterMovies();
-    setFilteredMovies(result);
-    console.log("Filtered Movies:", result);
+    setFilteredMovies(filterMovies());
   }, [selectedOptions, moviedata]);
 
   return (

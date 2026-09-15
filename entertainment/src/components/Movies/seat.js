@@ -2,6 +2,9 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { UserContext } from '../context';
 
+// CineBook payment server — the source of truth for shows, holds & bookings.
+const PAYMENT_SERVER = process.env.REACT_APP_PAYMENT_API_URL || 'http://127.0.0.1:8001';
+
 
 export default function SeatBooking() {
   const { moviedatabyid, fetchMovieDetails } = useContext(UserContext);
@@ -16,6 +19,7 @@ export default function SeatBooking() {
   // Server-side show id: the payment server owns pricing for this show.
   const showId = searchParams.get('showId') || '';
   const [bookedSeats, setBookedSeats] = useState([]);
+  const [selectedSeats, setSelectedSeats] = useState([]);
   
 
 
@@ -28,8 +32,11 @@ export default function SeatBooking() {
       <div style={{ display: 'flex' }}>
         {[...Array(totalSeats)].map((_, index) => {
           const seatNumber = index + 1;
-          const seatId = `${rowChar}-${seatNumber}`;
-          const isBooked = Array.isArray(bookedSeats) && bookedSeats.some((seat) => seat.seat_number.includes(`${rowChar}-${seatNumber}`) && seat.show_date === showDate && seat.show_time === showTime && seat.screentype === type && seat.movie === moviedatabyid.id && seat.theater === parseInt(theaterId) );
+          // Canonical seat label (e.g. "A1") — matches the CineBook server format.
+          const seatId = `${rowChar}${seatNumber}`;
+          // Booked seats come from the payment server as labels ("A1", "B7");
+          // holds & settled bookings are already scoped to this show server-side.
+          const isBooked = Array.isArray(bookedSeats) && bookedSeats.includes(seatId);
           const isSelected = selectedSeats.includes(seatId);
 
 
@@ -103,26 +110,11 @@ export default function SeatBooking() {
   const handleSeatClick = async (seatId, isBooked) => {
   
     if (!isBooked) {
-      try {
-        const response = await fetch(`http://127.0.0.1:8000/api/seatbooking/?theaterId=${theaterId}&theaterName=${theaterName}&showDate=${showDate}&type=${type}&showTime=${showTime}&amount=${amount}`);
-        if (response.ok) {
-          const data = await response.json();
-          const bookedSeatsForTheater = data.flat();
-  
-          setBookedSeats(bookedSeatsForTheater);
-  
-          setSelectedSeats((prevSelectedSeats) => {
-            console.log('Previous Selected Seats:', prevSelectedSeats);
-            return prevSelectedSeats.includes(seatId)
-              ? prevSelectedSeats.filter((seat) => seat !== seatId)
-              : [...prevSelectedSeats, seatId];
-          });
-        } else {
-          console.error('Failed to fetch booked seats');
-        }
-      } catch (error) {
-        console.error('Error during fetch:', error);
-      }
+      setSelectedSeats((prevSelectedSeats) => {
+        return prevSelectedSeats.includes(seatId)
+          ? prevSelectedSeats.filter((seat) => seat !== seatId)
+          : [...prevSelectedSeats, seatId];
+      });
     } else {
       alert('This seat is already booked. Please choose another seat.');
     }
@@ -130,14 +122,18 @@ export default function SeatBooking() {
   
 
 
+  // Booked seats now come from the CineBook server (holds + settled bookings).
   const fetchBookedSeats = async () => {
       try {
-
-        const response = await fetch(`http://127.0.0.1:8000/api/seatbooking/?theaterId=${theaterId}&theaterName=${theaterName}&showDate=${showDate}&type=${type}&showTime=${showTime}&amount=${amount}`);
+        if (!showId) {
+          // Legacy links without showId have no bookable show on the payment server.
+          setBookedSeats([]);
+          return;
+        }
+        const response = await fetch(`${PAYMENT_SERVER}/api/shows/${showId}/booked`);
         if (response.ok) {
           const data = await response.json();
-          setBookedSeats(data.flat())          
-          
+          setBookedSeats(Array.isArray(data.seats) ? data.seats : []);
         } else {
           console.error('Failed to fetch booked seats');
         }
@@ -175,6 +171,7 @@ export default function SeatBooking() {
         <p>Total Seats Selected: {selectedSeats.length}</p>
       </div>
       <Link to={`/movie/${id}/${moviedatabyid.moviename}/booking/seats/payment?theaterId=${theaterId}&theaterName=${theaterName}&showDate=${showDate}&type=${type}&showTime=${showTime}&amount=${amount}&selectedSeats=${selectedSeats.join(', ')}&showId=${showId}`}>
+        {/* Proceed to payment — showId carries pricing authority to the CineBook server */}
         <button type="submit">Proceed to Payment</button>
       </Link>
 

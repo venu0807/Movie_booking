@@ -24,6 +24,8 @@ const Payment = () => {
     error: false,
     errorMessage: "",
   });
+  // Latest order info from the payment server, for post-checkout confirmation.
+  const orderRef = React.useRef(null);
 
   const formattedSeats = selectedSeats.split(',').map(seat => seat.trim()).filter(seat => seat.length > 0);
   const seatType = type === 'premium' ? 'premium' : 'regular';
@@ -33,48 +35,22 @@ const Payment = () => {
     fetchMovieDetails(id);
   }, [id]);
 
-  // Records the booking in the Django app AFTER the payment server has verified
-  // the Razorpay checkout signature for this order.
+  // The CineBook payment server is the single source of truth for bookings:
+  // it holds seats atomically, computes the bill server-side, and marks the
+  // booking payment_authorized once the checkout signature is verified here.
+  // The old Django recording step is gone — we just confirm server state.
   const confirmBooking = async (paymentId) => {
     try {
-      const theaterResponse = await fetch(`http://127.0.0.1:8000/api/theatershow/?theaterName=${theaterName}`);
-      const theaterData = await theaterResponse.json();
-      const selectedTheater = theaterData.find(theater => theater.name === theaterName);
-
-      if (selectedTheater) {
-        const response = await fetch('http://127.0.0.1:8000/api/seatbooking/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            seat_number: formattedSeats,
-            is_booked: true,
-            price: amount * formattedSeats.length,
-            show_date: showDate,
-            screentype: type,
-            show_time: showTime,
-            total_amount: displayTotal,
-            payment_status: 'Confirmed',
-            payment_id: paymentId,
-            movie: moviedatabyid.id,
-            theater: selectedTheater.id,
-          }),
-        });
-
-        if (response.ok) {
-          setBookingStatus({ success: true, error: false, errorMessage: "" });
-        } else {
-          const errorResponse = await response.json();
-          const errorDetails = errorResponse && typeof errorResponse === 'object'
-            ? Object.keys(errorResponse).map((key) => `${key}: ${errorResponse[key].join(', ')}`).join(', ')
-            : (errorResponse.detail || "An unexpected error occurred.");
-          setBookingStatus({ success: false, error: true, errorMessage: `Validation errors: ${errorDetails}` });
-        }
-      } else {
-        throw new Error(`Theater with name ${theaterName} not found.`);
+      const response = await fetch(`${PAYMENT_SERVER}/api/bookings/${orderRef.current.bookingId}`);
+      if (!response.ok) throw new Error(`Booking lookup failed (HTTP ${response.status})`);
+      const booking = await response.json();
+      if (booking.status !== 'payment_authorized' && booking.status !== 'payment_settled') {
+        throw new Error(`Unexpected booking status: ${booking.status}`);
       }
+      setBookingStatus({ success: true, error: false, errorMessage: "" });
     } catch (error) {
-      console.error('Error during fetch:', error);
-      setBookingStatus({ success: false, error: true, errorMessage: "An unexpected error occurred." });
+      console.error('Error confirming booking:', error);
+      setBookingStatus({ success: false, error: true, errorMessage: "Payment verified but booking confirmation failed." });
     }
   };
 
@@ -102,6 +78,7 @@ const Payment = () => {
         setBookingStatus({ success: false, error: true, errorMessage: orderData.error || "Failed to create payment order" });
         return;
       }
+      orderRef.current = orderData;
 
       const options = {
         key: orderData.key,

@@ -7,13 +7,16 @@ import { UserContext } from "../components/context";
 export default function Login(){
   
   
-  const { loginUser,user } =useContext(UserContext);
+  const { loginUser, user, authError } =useContext(UserContext);
 
 
 
     return(
         <div>
             <h1 className="d-flex justify-content-center my-5">Login</h1>
+            {authError && (
+              <p className="text-danger text-center">{authError}</p>
+            )}
             <div className="mx-auto col-10 col-md-8 col-lg-3 bg-info p-4" >
             <form onSubmit={loginUser} >
                   <div className="form-group">

@@ -3,7 +3,7 @@ import { UserContext } from "../components/context";
 
 export default function Register(){
 
-  const { registerUser } =useContext(UserContext);
+  const { registerUser, authError } =useContext(UserContext);
 
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -14,7 +14,10 @@ export default function Register(){
 
     return(
         <div>
-            <h1 className="d-flex justify-content-center my-5">Registation Form</h1>
+            <h1 className="d-flex justify-content-center my-5">Registration Form</h1>
+            {authError && (
+              <p className="text-danger text-center">{authError}</p>
+            )}
             <div className="mx-auto col-10 col-md-8 col-lg-6 bg-info text-light py-3">
             <form onSubmit={registerUser}>
                 {/* <div className="form-row">

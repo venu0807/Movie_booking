@@ -13,13 +13,15 @@ import Login from "../pages/LoginPage";
 import Register from "../pages/RegisterPage";
 import Cast from "./Movies/cast";
 import Crew from "./Movies/crew";
+import Person from "./Movies/Person";
+import MyBookings from "./Rating/MyBookings";
 
 
 
 
 
 export default function Menubar(){
-    const { city, setCity, user } =useContext(UserContext);
+    const { city, setCity, user, logoutUser } =useContext(UserContext);
 
 
 
@@ -40,7 +42,16 @@ return(
     
       <div>
             <nav className=" container navbar navbar-light bg-light">
-                {user ? (<a className="navbar-brand" href="#">{user.username}</a>) : (<p> </p>)}
+                <div className="d-flex align-items-center">
+                    {user ? (
+                        <>
+                            <Link className="navbar-brand mb-0" to="/my-bookings">👋 {user.username}</Link>
+                            <button className="btn btn-sm btn-outline-secondary ml-2" onClick={logoutUser}>Logout</button>
+                        </>
+                    ) : (
+                        <Link className="navbar-brand mb-0" to="/login">Login / Register</Link>
+                    )}
+                </div>
                 <div className="d-flex">
                 <div className="navbar-nav ml-auto">
                     <select className="col-md-12 border-0" value={city} onChange={handleCityChange}>
@@ -83,13 +94,15 @@ return(
               <Route path='/login' element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/" element={<Home />} />
+              <Route path="/my-bookings" element={<MyBookings />} />
+              <Route path="/mrating" element={<MyBookings />} />
               <Route path="/movies" element={<Movies />} />
               <Route path="/movie/:id/:moviename/*" element={<MovieDetails />} />
               <Route path="/movie/:id/:moviename/booking" element={<Booking />} />
               <Route path="/movie/:id/:moviename/booking/seats" element={<SeatBooking />} />
               <Route path="/movie/:id/:moviename/booking/seats/payment" element={<Payment />} />
-              <Route path="/person" element={<Cast/>} />
-              <Route path="/persen" element={<Crew/>} />
+              <Route path="/person" element={<Person />} />
+              <Route path="/persen" element={<Person />} />
               <Route path="/events" element={<Events />} />
               <Route path="/sports" element={<Sports />} />
             </Routes>
